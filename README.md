@@ -4,7 +4,7 @@ Este proyecto implementa una red neuronal artificial de una sola capa (Perceptr�
 
 ---
 
-## 🛠️ Componentes Utilizados
+## Componentes Utilizados
 
 ### Hardware
 * **Microcontrolador:** ESP32 (Wi-Fi + Bluetooth).
@@ -27,7 +27,7 @@ Este proyecto implementa una red neuronal artificial de una sola capa (Perceptr�
 
 ---
 
-## 🚀 Funcionalidades Implementadas
+## Funcionalidades Implementadas
 
 1. **Lectura y Normalización de Sensores:**
    * Muestreo de picos de señal analógica para el micrófono.
