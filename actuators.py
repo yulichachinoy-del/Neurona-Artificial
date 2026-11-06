@@ -184,15 +184,15 @@ class ActuatorManager:
                 self.buzzer2.freq(1000)
                 self.buzzer2.duty(512)
 
-    def _refresh_lcd(self, now, x1, x2, z, alerta):
+    def _refresh_lcd(self, now, linea_luz, linea_sonido, alerta):
         peer_activo = (self.peer_alert is not None and time.ticks_diff(self.peer_until, now) > 0)
         if not peer_activo:
             self.peer_alert = None
             linea1 = config.NODE_NAME + (" ALERTA" if alerta else " NORMAL")
         else:
             linea1 = "ALERTA:" + str(self.peer_alert)[-9:]
-        linea2 = "L%d S%d Z%.1f" % (int(x1 * 100), int(x2 * 100), z)
-        self.lcd.print_lines(linea1, linea2)
+        linea2 = linea_luz + " " + linea_sonido
+        self.lcd.print_lines(linea1, linea2, force=alerta)
 
     def notify_peer_alert(self, nodo, ms=None):
         self.peer_alert = str(nodo)
@@ -200,21 +200,68 @@ class ActuatorManager:
         self.peer_until = time.ticks_add(time.ticks_ms(), margen)
         print("[ACTUADORES] Alerta recibida de nodo remoto:", nodo)
 
-    def set_state(self, x1, x2, z, alerta):
-        now = time.ticks_ms()
+    def set_state(self, now_ms, luz_contar, sonido_raw, alerta):
+        ldr_max = config.LDR_REF if config.LIGHT_SENSOR.strip().lower().startswith("tsl") is False else 1.0
+        if ldr_max <= 0:
+            ldr_max = 1.0
+        rl = luz_contar / ldr_max
+        if rl > 1.0:
+            rl = 1.0
+        por_luz = int(rl * 100)
+        por_sonido = int(sonido_raw * 100)
+        if por_sonido > 99:
+            por_sonido = 99
+
         if alerta:
             self.pwm_green.duty(0)
-            self.pwm_red.duty(max(300, self._duty(x2)))
+            self.pwm_red.duty(self._duty(1))   # rojo lleno cuando hay alarma remota
         else:
-            self.pwm_green.duty(self._duty(x1))
-            self.pwm_red.duty(0)
+            self.pwm_green.duty(0)
+            self.pwm_red.duty(self._duty(rl))  # rojo: mas luz = mas led rojo
 
-        self._update_alarm(now, alerta)
+        self._update_alarm(now_ms, alerta)
 
-        if time.ticks_diff(now, self.last_lcd_update) >= config.LCD_INTERVAL_MS:
-            self.last_lcd_update = now
-            self._refresh_lcd(now, x1, x2, z, alerta)
-        self.last_state = {"x1": round(x1, 3), "x2": round(x2, 3), "z": round(z, 2), "alerta": bool(alerta)}
+        if time.ticks_diff(now_ms, self.last_lcd_update) >= config.LCD_INTERVAL_MS:
+            self.last_lcd_update = now_ms
+            self._refresh_lcd(now_ms,
+                              "L%d%%" % por_luz,
+                              "S%d%%" % por_sonido,
+                              alerta)
+        self.last_state = {
+            "luz": round(luz_contar, 1),
+            "sonido_raw": round(sonido_raw, 1),
+            "por_luz": por_luz,
+            "por_sonido": por_sonido,
+            "alerta": bool(alerta),
+        }
+
+        if now_ms - self.last_lcd_update >= config.LCD_INTERVAL_MS:
+            self.last_lcd_update = now_ms
+            self._refresh_lcd(now_ms,
+                              "L%d%%" % por_luz,
+                              "S%d%%" % por_sonido,
+                              alerta)
+
+        if now_ms - self.last_lcd_update >= config.LCD_INTERVAL_MS:
+            self.last_lcd_update = now_ms
+            self._refresh_lcd(now_ms,
+                              "L%d%%" % por_luz,
+                              "S%d%%" % por_sonido,
+                              alerta)
+
+        if now_ms - self.last_lcd_update >= config.LCD_INTERVAL_MS:
+            self.last_lcd_update = now_ms
+            self._refresh_lcd(now_ms,
+                              "L%d%%" % por_luz,
+                              "S%d%%" % por_sonido,
+                              alerta)
+        self.last_state = {
+            "luz": round(luz_contar, 1),
+            "sonido_raw": round(sonido_raw, 1),
+            "por_luz": por_luz,
+            "por_sonido": por_sonido,
+            "alerta": bool(alerta),
+        }
 
     def show_message(self, linea1, linea2=""):
         self.last_lcd_update = time.ticks_ms()

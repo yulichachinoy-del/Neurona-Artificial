@@ -6,7 +6,7 @@ from umqtt.simple import MQTTClient
 import config
 
 class MQTTHandler:
-    def __init__(self, on_command_callback=None, on_alert_callback=None):
+    def __init__(self, on_command_callback=None, on_alert_callback=None, feed=None):
         chip_id = ubinascii.hexlify(machine.unique_id()).decode('utf-8')
         self.client_id = config.NODE_NAME + "_" + chip_id
         self.client = None
@@ -14,6 +14,21 @@ class MQTTHandler:
         self.last_reconnect = 0
         self.on_command = on_command_callback
         self.on_alert = on_alert_callback
+        self.feed = feed
+
+    def _alimentar(self):
+        """Avisa al watchdog antes de una llamada de red que puede bloquear.
+
+        connect() espera el CONNACK del broker y puede tardar varios segundos
+        (medidos ~7 s con broker.hivemq.com); si el WDT vence ahi, MicroPython
+        hace panic y la placa se reinicia en bucle.
+        """
+        if not self.feed:
+            return
+        try:
+            self.feed()
+        except Exception:
+            pass
 
     def connect(self):
         user = config.MQTT_USER.strip() if config.MQTT_USER else None
@@ -42,10 +57,12 @@ class MQTTHandler:
                 )
 
             self.client.set_callback(self._sub_cb)
+            self._alimentar()
             self.client.connect()
             self.client.subscribe(config.TOPIC_NODE_COMMANDS)
             self.client.subscribe(config.TOPIC_BROADCAST_COMMANDS)
             self.client.subscribe(config.TOPIC_ALERTS)
+            self._alimentar()
             self.connected = True
             return True
         except Exception as e:
