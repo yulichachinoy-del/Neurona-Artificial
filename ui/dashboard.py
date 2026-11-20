@@ -3,11 +3,13 @@ import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import math
+import re
 import threading
 import time
 import flet as ft
 
 from neuron import Neurona
+import config
 from serial_manager import SerialManager
 from ui.theme import Theme
 from ui.sidebar import Sidebar
@@ -159,8 +161,22 @@ def main(page: ft.Page):
         page.update()
 
     def on_recalibrar_circuito(e):
-        enviado = serial_mgr.enviar_recalibrar()
-        msg = "Comando de recalibración enviado al circuito ESP32." if enviado else "Conecta el ESP32 por USB para recalibrar el circuito."
+        parametros = estado.get("parametros_activacion", {
+            "peso_luz": config.PESO_LUZ,
+            "peso_sonido": config.PESO_SONIDO,
+            "sesgo": config.SESGO,
+            "muestras_on": config.MUESTRAS_ON,
+            "muestras_off": config.MUESTRAS_OFF,
+        })
+        enviado = serial_mgr.enviar_parametros_y_recalibrar(parametros)
+        if enviado:
+            detalle = serial_mgr.ultimo_error_parametros
+            msg = ("Parámetros activos, pero no guardados en la ESP32: " + detalle + " Recalibración iniciada.") if detalle else "Parámetros confirmados por la ESP32 y recalibración iniciada."
+        elif serial_mgr.conectado:
+            detalle = serial_mgr.ultimo_error_parametros
+            msg = ("Error: la ESP32 rechazó los parámetros: " + detalle) if detalle else "Error: la ESP32 no respondió. Carga el main.py actualizado en la placa."
+        else:
+            msg = "Conecta el ESP32 por USB para recalibrar el circuito."
         page.overlay.append(ft.SnackBar(content=ft.Text(msg, color=Theme.TEXTO), bgcolor=Theme.PANEL_SEC, open=True))
         page.update()
 
@@ -168,6 +184,49 @@ def main(page: ft.Page):
         estado["auto_sim"] = e.control.value
         controles_hw.set_modo_auto(estado["auto_sim"])
         page.update()
+
+    def aplicar_parametros_activacion(parametros):
+        ruta_config = Path(__file__).resolve().parent.parent / "config.py"
+        contenido = ruta_config.read_text(encoding="utf-8")
+        asignaciones = {
+            "PESO_LUZ": parametros["peso_luz"],
+            "PESO_SONIDO": parametros["peso_sonido"],
+            "SESGO": parametros["sesgo"],
+            "MUESTRAS_ON": parametros["muestras_on"],
+            "MUESTRAS_OFF": parametros["muestras_off"],
+        }
+        for nombre, valor in asignaciones.items():
+            contenido, cambios = re.subn(
+                rf"(?m)^{nombre}\s*=.*$", f"{nombre} = {valor}", contenido, count=1
+            )
+            if cambios != 1:
+                raise ValueError(f"No se encontró {nombre} en config.py")
+        ruta_temporal = ruta_config.with_suffix(".py.tmp")
+        ruta_temporal.write_text(contenido, encoding="utf-8")
+        ruta_temporal.replace(ruta_config)
+
+        config.PESO_LUZ = parametros["peso_luz"]
+        config.PESO_SONIDO = parametros["peso_sonido"]
+        config.SESGO = parametros["sesgo"]
+        config.MUESTRAS_ON = parametros["muestras_on"]
+        config.MUESTRAS_OFF = parametros["muestras_off"]
+        estado["parametros_activacion"] = dict(parametros)
+        neurona.reiniciar()
+        estado["ultimo_cambio_alerta"] = 0.0
+        actualizar_simulacion(estado["sim_x1"], estado["sim_x2"], refrescar_ui=False)
+        if estado["vista_actual"] == "monitoreo" and not serial_mgr.conectado:
+            actualizar_en_vivo(estado["x1"], estado["x2"], refrescar_ui=False)
+        enviado_esp32 = serial_mgr.enviar_parametros(parametros) if serial_mgr.conectado else False
+        page.update()
+        if enviado_esp32:
+            if serial_mgr.ultimo_error_parametros:
+                return "Aviso: aplicados en la ESP32, pero no guardados allí: " + serial_mgr.ultimo_error_parametros
+            return "Guardados y confirmados por el ESP32; z se actualizará con la siguiente lectura."
+        if serial_mgr.conectado:
+            if serial_mgr.ultimo_error_parametros:
+                return "Error: la ESP32 rechazó los parámetros: " + serial_mgr.ultimo_error_parametros
+            return "Error: la ESP32 no confirmó. Actualiza su main.py."
+        return "Guardados en este equipo. Conecta la ESP32 para sincronizarlos."
 
     def auto_sim_worker():
         t = 0.0
@@ -204,6 +263,14 @@ def main(page: ft.Page):
     vista_bienvenida = WelcomeView(
         on_ir_monitoreo=lambda: barra_lateral.seleccionar("monitoreo"),
         on_ir_simulador=lambda: barra_lateral.seleccionar("simulador"),
+        on_aplicar_parametros=aplicar_parametros_activacion,
+        parametros_iniciales={
+            "peso_luz": config.PESO_LUZ,
+            "peso_sonido": config.PESO_SONIDO,
+            "sesgo": config.SESGO,
+            "muestras_on": config.MUESTRAS_ON,
+            "muestras_off": config.MUESTRAS_OFF,
+        },
     )
 
     dashboard = ft.Column(expand=True, spacing=16, scroll=ft.ScrollMode.AUTO, controls=[vista_bienvenida])

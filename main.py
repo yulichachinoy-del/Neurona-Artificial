@@ -1,6 +1,10 @@
 import sys
 import time
-import uselect
+import os
+try:
+    import uselect
+except ImportError:
+    import select as uselect
 from machine import I2C, Pin
 import config
 from sensors import Sensores
@@ -14,13 +18,51 @@ def escanear(sda, scl):
     return i2c, i2c.scan()
 
 
-def ejecutar_recalibracion(sensores, neurona, actuadores, lcd):
-    actuadores.apagar_todo()
-    lcd.escribir("Calibrando...", "Silencio, por favor")
-    sensores.calibrar()
-    neurona.reiniciar()
-    lcd.escribir("Sistema listo", "")
-    time.sleep_ms(400)
+def aplicar_parametros_config(datos):
+    """Guarda y activa los parámetros que llegan desde la interfaz por USB."""
+    if len(datos) != 5:
+        raise ValueError("Se esperaban cinco parámetros")
+    valores = {
+        "PESO_LUZ": float(datos[0]),
+        "PESO_SONIDO": float(datos[1]),
+        "SESGO": float(datos[2]),
+        "MUESTRAS_ON": int(datos[3]),
+        "MUESTRAS_OFF": int(datos[4]),
+    }
+    if valores["MUESTRAS_ON"] < 1 or valores["MUESTRAS_OFF"] < 1:
+        raise ValueError("Las muestras deben ser mayores que cero")
+
+    try:
+        with open("config.py", "r") as archivo:
+            lineas = archivo.readlines()
+        encontrados = {}
+        for indice in range(len(lineas)):
+            linea = lineas[indice]
+            for nombre in valores:
+                if linea.startswith(nombre + " ="):
+                    lineas[indice] = "%s = %s\n" % (nombre, valores[nombre])
+                    encontrados[nombre] = True
+        if len(encontrados) != len(valores):
+            raise ValueError("Faltan parámetros en config.py")
+
+        with open("config.tmp", "w") as archivo:
+            for linea in lineas:
+                archivo.write(linea)
+        try:
+            os.remove("config.py")
+        except OSError:
+            pass
+        os.rename("config.tmp", "config.py")
+    except Exception as error:
+        # Los valores sí quedan activos durante esta ejecución aunque no se
+        # hayan podido guardar en el sistema de archivos de la placa.
+        for nombre in valores:
+            setattr(config, nombre, valores[nombre])
+        return str(error)
+
+    for nombre in valores:
+        setattr(config, nombre, valores[nombre])
+    return None
 
 
 def main():
@@ -59,36 +101,56 @@ def main():
     lcd.escribir("Sistema listo", "")
     time.sleep(1)
 
-    # --- Configurar escucha no bloqueante del USB Serial ---
+    # Escucha comandos de la interfaz sin detener la lectura de sensores.
     poll_usb = uselect.poll()
     poll_usb.register(sys.stdin, uselect.POLLIN)
 
     print("Sistema en marcha")
+    print("PARAMS:ACTIVOS:%s,%s,%s,%s,%s" % (
+        config.PESO_LUZ, config.PESO_SONIDO, config.SESGO,
+        config.MUESTRAS_ON, config.MUESTRAS_OFF,
+    ))
     alerta_anterior = False
     ultimo_print = time.ticks_ms()
     ultima_telemetria = time.ticks_ms()
 
     while True:
-        # 1. Revisar si la interfaz PC envió orden de recalibrar por USB
         if poll_usb.poll(0):
-            comando = sys.stdin.readline().strip().upper()
+            comando = sys.stdin.readline().strip()
             if comando == "RECALIBRAR":
-                ejecutar_recalibracion(sensores, neurona, actuadores, lcd)
+                actuadores.apagar_todo()
+                lcd.escribir("Calibrando...", "Silencio, por favor")
+                sensores.calibrar()
+                neurona.reiniciar()
                 alerta_anterior = False
+                lcd.escribir("Sistema listo", "")
+                time.sleep_ms(400)
+            elif comando.startswith("PARAMS:"):
+                try:
+                    error_guardado = aplicar_parametros_config(comando[7:].split(","))
+                    neurona.reiniciar()
+                    if error_guardado:
+                        print("PARAMS:OK:VOLATILE", error_guardado)
+                    else:
+                        print("PARAMS:OK")
+                except Exception as error:
+                    print("PARAMS:ERROR", error)
 
-        # 2. Boton físico: recalibrar
+        # Boton: recalibrar
         if sensores.boton_pulsado():
-            ejecutar_recalibracion(sensores, neurona, actuadores, lcd)
-            alerta_anterior = False
-            while sensores.boton_pulsado():
+            actuadores.apagar_todo()
+            lcd.escribir("Calibrando...", "Espere...")
+            sensores.calibrar()
+            neurona.reiniciar()
+            while sensores.boton_pulsado():  # Esperar a que suelten el boton
                 time.sleep_ms(50)
+            lcd.escribir("Sistema listo", "")
 
-        # 3. Leer, decidir y actuar
+        # Leer, decidir y actuar
         x1, x2, luz, ruido = sensores.leer_entradas()
         z, alerta = neurona.calcular(x1, x2)
         actuadores.actualizar(x1, x2, z, alerta)
 
-        # 4. Enviar datos en tiempo real a la interfaz PC (cada 200 ms)
         ahora = time.ticks_ms()
         if time.ticks_diff(ahora, ultima_telemetria) >= 200:
             ultima_telemetria = ahora
@@ -102,9 +164,8 @@ def main():
         # Depuracion del LDR: una linea por segundo
         if config.DEPURAR and time.ticks_diff(ahora, ultimo_print) >= 1000:
             ultimo_print = ahora
-            print("LDR crudo:", luz, "| min:", sensores.luz_min, "| max:", sensores.luz_max, "| x1: %.2f" % x1)
+            print("LDR crudo:", luz, "| ambiente:", sensores.luz_ambiente, "| x1: %.2f" % x1)
 
         time.sleep_ms(10)
-
 
 main()

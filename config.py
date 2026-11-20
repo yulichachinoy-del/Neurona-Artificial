@@ -8,7 +8,7 @@ PIN_LDR = 34
 PIN_BOTON = 4
 
 LUZ_MUESTRAS = 32        # Lecturas que se promedian cada vez (mas = mas estable)
-LUZ_SUAVIZADO = 0.15     # 0.05 = muy estable pero lento | 0.5 = rapido pero tembloroso
+LUZ_SUAVIZADO = 0.35     # Responde mas rapido; el promedio de muestras reduce el ruido
 LUZ_MARGEN = 150         # Cuanto debe subir la luz sobre el ambiente para llegar al 100% (al inicio)
 DEPURAR = True           # True = imprime las lecturas del LDR cada segundo
 MIC_MAXIMO = 350         # Ruido sobre el fondo que cuenta como 100%
@@ -28,5 +28,5 @@ LCD_MS = 300             # Cada cuanto se actualiza la pantalla
 PESO_LUZ = 5.0
 PESO_SONIDO = 5.0
 SESGO = -6.0
-MUESTRAS_ON = 2          # Lecturas seguidas para activar la alerta
-MUESTRAS_OFF = 5         # Lecturas seguidas para desactivarla
+MUESTRAS_ON = 2
+MUESTRAS_OFF = 5

@@ -16,6 +16,7 @@ class Sensores:
         self.ldr = crear_adc(config.PIN_LDR)
         self.ruido_base = 0
         self.luz_suave = 0     # Luz con "memoria": cambia poco a poco
+        self.luz_ambiente = 0   # Referencia tomada en la última calibración
         self.luz_min = 0       # Lo mas oscuro que ha visto el LDR
         self.luz_max = 4095    # Lo mas claro que ha visto el LDR
 
@@ -53,6 +54,7 @@ class Sensores:
         # Luz del ambiente = punto de partida: aqui la luz vale 0%
         ambiente = self.leer_luz()
         self.luz_suave = ambiente
+        self.luz_ambiente = ambiente
         self.luz_min = ambiente
         self.luz_max = min(4095, ambiente + config.LUZ_MARGEN)
         print("Calibrado. Ruido de fondo:", self.ruido_base, "| Luz ambiente:", ambiente)
@@ -65,13 +67,16 @@ class Sensores:
         luz = int(self.luz_suave)
         ruido = self.leer_ruido()
 
-        # El rango del LDR se ajusta solo: tapar baja el minimo, alumbrar sube el maximo
+        # Los extremos observados se conservan solo como diagnóstico.
         if luz < self.luz_min:
             self.luz_min = luz
         if luz > self.luz_max:
             self.luz_max = luz
-        rango = max(1, self.luz_max - self.luz_min)  # Evita dividir entre 0
-        x1 = (luz - self.luz_min) / rango
+
+        # Normaliza con respecto a la referencia calibrada. No usa mínimos/máximos
+        # históricos, que podían dejar el porcentaje artificialmente alto.
+        margen = max(1, config.LUZ_MARGEN)
+        x1 = min(1.0, max(0.0, (luz - self.luz_ambiente) / margen))
 
         x2 = min(1.0, max(0, ruido - self.ruido_base) / config.MIC_MAXIMO)
         return x1, x2, luz, ruido
