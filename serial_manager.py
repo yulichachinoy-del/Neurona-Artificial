@@ -1,4 +1,3 @@
-import re
 import threading
 import time
 
@@ -80,7 +79,6 @@ class SerialManager:
     def _leer_loop(self):
         while self._running and self.ser and self.ser.is_open:
             try:
-                # Si se acumulan muchas líneas en el buffer, leer hasta la más reciente
                 if self.ser.in_waiting > 256:
                     self.ser.reset_input_buffer()
 
@@ -97,25 +95,25 @@ class SerialManager:
                 break
 
     def _parsear_linea(self, linea: str):
-        upper = linea.upper()
-        if any(pal in upper for pal in ("RECALIBR", "CALIBR", "INICIANDO", "LISTO", "READY", "BOOT", "ETS ")):
+        linea = linea.strip()
+        # Ignora mensajes de arranque, logs o depuración ("LDR crudo:...")
+        if not linea.startswith("DATA:"):
             return None
 
-        numeros = re.findall(r"[-+]?\d*\.\d+|[-+]?\d+", linea)
-        if len(numeros) >= 2:
-            x1 = float(numeros[0])
-            x2 = float(numeros[1])
-            if x1 > 1.0:
-                x1 /= 100.0
-            if x2 > 1.0:
-                x2 /= 100.0
-            z = float(numeros[2]) if len(numeros) >= 3 else None
-            alerta = None
-            if "ALERTA" in upper or "TRUE" in upper or "ON" in upper:
-                alerta = True
-            elif "NORMAL" in upper or "FALSE" in upper or "OFF" in upper:
-                alerta = False
-            elif len(numeros) >= 4:
-                alerta = bool(int(float(numeros[3])))
-            return (max(0.0, min(1.0, x1)), max(0.0, min(1.0, x2)), z, alerta)
+        try:
+            payload = linea[5:]  # Quita el prefijo "DATA:"
+            partes = payload.split(",")
+            if len(partes) >= 4:
+                x1 = float(partes[0])
+                x2 = float(partes[1])
+                z = float(partes[2])
+                alerta = bool(int(partes[3]))
+                return (
+                    max(0.0, min(1.0, x1)),
+                    max(0.0, min(1.0, x2)),
+                    z,
+                    alerta,
+                )
+        except ValueError:
+            return None
         return None
