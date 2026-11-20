@@ -2,6 +2,8 @@
 
 Firmware en MicroPython que lee un sensor de luz y un micrófono, evalúa sus señales con una neurona artificial y controla indicadores, una alarma y una pantalla LCD. La versión actual funciona localmente: no requiere conexión Wi-Fi ni comunicación MQTT.
 
+El proyecto incluye además un dashboard para el computador, hecho con Flet, que simula los sensores y muestra en pantalla la neurona, la LCD y los actuadores sin necesidad de tener el ESP32 conectado.
+
 ## Hardware
 
 - ESP32 compatible con MicroPython.
@@ -25,12 +27,26 @@ Los pines y parámetros de filtrado, calibración, alarma y neurona se pueden ca
 
 ## Archivos
 
+### Firmware (se copian al ESP32)
+
 - `main.py`: inicializa el bus I2C y los componentes, calibra y ejecuta el ciclo principal.
 - `config.py`: pines y parámetros ajustables.
 - `sensors.py`: lecturas ADC, filtrado y calibración ambiental.
 - `neuron.py`: combinación ponderada de las entradas y decisión de alerta con histéresis.
 - `actuators.py`: LEDs, buzzers y actualización periódica de la LCD.
 - `Lcd.py`: controlador de pantalla LCD por I2C.
+
+### Dashboard (solo se ejecuta en el computador)
+
+- `app.py`: punto de entrada; ensambla los módulos de la interfaz.
+- `tema.py`: paleta de colores.
+- `barra_lateral.py`: modelo matemático, hiperparámetros, mapeo de pines y botón de recalibración.
+- `tarjetas_kpi.py`: tarjetas de luz, sonido, activación Z y estado del sistema.
+- `panel_hardware.py`: emulador de la LCD 1602, LEDs y sirena.
+- `simulador.py`: sliders de luz y sonido, escenarios rápidos y generador dinámico.
+- `grafica.py`: tendencia temporal de luz, sonido y activación.
+
+El dashboard reutiliza `neuron.py` y `config.py` del firmware, así que la simulación usa la misma neurona y los mismos parámetros que el ESP32.
 
 ## Funcionamiento
 
@@ -42,11 +58,50 @@ Los pines y parámetros de filtrado, calibración, alarma y neurona se pueden ca
 
 La lectura del LDR se promedia y suaviza. Su rango se adapta durante la ejecución a los mínimos y máximos observados. El micrófono se mide por el rango pico a pico en una ventana de muestreo.
 
-## Instalación y ejecución
+## Instalación y ejecución del firmware (ESP32)
 
 1. Graba MicroPython en el ESP32.
-2. Copia los archivos `.py` de este proyecto al dispositivo usando Thonny, `mpremote` u otra herramienta compatible.
+2. Copia al dispositivo únicamente los archivos del firmware (`main.py`, `config.py`, `sensors.py`, `neuron.py`, `actuators.py` y `Lcd.py`) usando Thonny, `mpremote` u otra herramienta compatible. No copies los archivos del dashboard: dependen de Flet, que no existe en MicroPython.
 3. Configura los pines en `config.py` y conecta los componentes.
 4. Ejecuta `main.py` (o configúralo como archivo de inicio, según tu flujo de trabajo).
 
 El sistema también puede operar sin LCD: el programa informa por consola si no detecta un dispositivo I2C. La salida de depuración de luz se controla con `DEPURAR` en `config.py`.
+
+`main.py` solo funciona dentro del ESP32, porque usa el módulo `machine` de MicroPython. Si lo ejecutas en el computador dará el error `No module named 'machine'`.
+
+## Dashboard de monitoreo y simulación (computador)
+
+### Requisitos
+
+- Python 3.10 o superior (se probó con Python 3.13).
+- Las librerías `flet` y `flet-charts`.
+- Opcional: `pyserial`. Solo cambia la etiqueta de la barra lateral entre "Serial: Disponible" y "Modo: Simulación Activa".
+
+### Instalación
+
+Se recomienda usar un entorno virtual. En Windows:
+
+```bash
+python -m venv .venv
+.venv\Scripts\activate
+pip install flet flet-charts
+```
+
+En Linux o macOS, el segundo comando es `source .venv/bin/activate`.
+
+### Ejecución
+
+Desde la carpeta del proyecto:
+
+```bash
+python app.py
+```
+
+### Qué se puede hacer
+
+- Mover los sliders de luz (`x1`) y sonido (`x2`) y ver cómo responden las tarjetas, la LCD emulada, los LEDs y la gráfica.
+- Usar los escenarios rápidos (Oscuridad, Ambiente Normal, Disparar Alerta).
+- Activar el generador dinámico, que varía las entradas automáticamente.
+- Pulsar "Pulsador Recalibrar", que equivale al botón del GPIO 4: reinicia el estado y la histéresis de la neurona.
+
+Los pesos, el sesgo y las muestras de histéresis que muestra la barra lateral se leen de `config.py`. Si los cambias, reinicia el dashboard para ver los valores nuevos.
