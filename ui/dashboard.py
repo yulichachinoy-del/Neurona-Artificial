@@ -16,9 +16,12 @@ from ui.kpis import KPISection
 from ui.controls_hw import ControlsAndHardwareSection
 from ui.chart import TrendChartSection
 from ui.view_history import HistoryView
-
+from pathlib import Path
 
 def main(page: ft.Page):
+    RUTA_ICONO = Path(__file__).parent / "assets" / "icono.ico"
+    if RUTA_ICONO.exists():
+        page.window.icon = str(RUTA_ICONO)
     page.title = "Neurona Artificial — ESP32"
     page.bgcolor = Theme.FONDO
     page.theme_mode = ft.ThemeMode.DARK
