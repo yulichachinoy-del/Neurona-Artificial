@@ -1,10 +1,3 @@
-"""
-Neurona Artificial (ESP32) - Monitoreo y Simulación en Tiempo Real
-Punto de entrada del dashboard: ensambla los módulos de la interfaz.
-
-Ejecutar desde la carpeta del proyecto:  python app.py
-"""
-
 import flet as ft
 
 from neuron import Neurona
@@ -14,6 +7,9 @@ from tarjetas_kpi import TarjetasKPI
 from panel_hardware import PanelHardware
 from simulador import SimuladorSensores
 from grafica import GraficaTendencia
+from pathlib import Path
+
+RUTA_ICONO = Path(__file__).parent / "assets" / "icono.ico"
 
 # Soporte opcional para puerto serial (si pyserial está instalado)
 try:
@@ -59,6 +55,7 @@ def crear_encabezado():
 def main(page: ft.Page):
     # ---------- Ventana ----------
     page.title = "Neurona Artificial — Monitoreo y Simulación ESP32"
+    page.window.icon = str(RUTA_ICONO)
     page.bgcolor = FONDO
     page.theme_mode = ft.ThemeMode.DARK
     page.window.width = 1920
