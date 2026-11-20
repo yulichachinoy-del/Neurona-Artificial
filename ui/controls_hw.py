@@ -1,12 +1,12 @@
 import flet as ft
 from ui.theme import Theme
 
+
 class ControlsAndHardwareSection(ft.Row):
     def __init__(self, on_valores_cambiados, on_toggle_auto):
         super().__init__(spacing=14)
         self.on_valores_cambiados = on_valores_cambiados
 
-        # --- Controles del Simulador ---
         self.lbl_luz_pct = ft.Text("30%", size=12, color=Theme.TEXTO)
         self.slider_luz = ft.Slider(
             min=0.0, max=1.0, value=0.30, divisions=100,
@@ -22,95 +22,62 @@ class ControlsAndHardwareSection(ft.Row):
         )
 
         self.switch_auto = ft.Switch(
-            label="Generador Dinámico en Vivo",
+            label="Generador Dinámico",
             value=False,
             active_color=Theme.AZUL,
             on_change=on_toggle_auto
         )
 
         panel_controles = ft.Container(
-            expand=1,
-            bgcolor=Theme.PANEL,
-            padding=16,
-            border_radius=14,
-            content=ft.Column(
-                spacing=8,
-                controls=[
-                    ft.Row(
-                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                        controls=[
-                            ft.Text("SIMULADOR DE SENSORES (x1 y x2)", size=12, weight=ft.FontWeight.BOLD, color=Theme.TEXTO_SEC),
-                            self.switch_auto
-                        ]
-                    ),
-                    ft.Row(
-                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                        controls=[
-                            ft.Text("Luz LDR (x1):", size=12, color=Theme.AMARILLO, weight=ft.FontWeight.BOLD),
-                            self.lbl_luz_pct
-                        ]
-                    ),
-                    self.slider_luz,
-                    ft.Row(
-                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                        controls=[
-                            ft.Text("Micrófono (x2):", size=12, color=Theme.AZUL, weight=ft.FontWeight.BOLD),
-                            self.lbl_son_pct
-                        ]
-                    ),
-                    self.slider_sonido,
-                    ft.Row(
-                        spacing=8,
-                        controls=[
-                            ft.OutlinedButton("Oscuridad", on_click=lambda e: self.fijar_escenario(0.10, 0.15)),
-                            ft.OutlinedButton("Ambiente Normal", on_click=lambda e: self.fijar_escenario(0.40, 0.30)),
-                            ft.OutlinedButton("Disparar Alerta", on_click=lambda e: self.fijar_escenario(0.85, 0.80)),
-                        ]
-                    )
-                ]
-            )
+            expand=1, bgcolor=Theme.PANEL, padding=20, border_radius=14,
+            content=ft.Column(spacing=10, controls=[
+                ft.Row(alignment=ft.MainAxisAlignment.SPACE_BETWEEN, controls=[
+                    ft.Text("SIMULADOR DE SENSORES (x1 y x2)", size=12, weight=ft.FontWeight.BOLD, color=Theme.TEXTO_SEC),
+                    self.switch_auto
+                ]),
+                ft.Row(alignment=ft.MainAxisAlignment.SPACE_BETWEEN, controls=[
+                    ft.Text("Luz LDR (x1):", size=12, color=Theme.AMARILLO, weight=ft.FontWeight.BOLD),
+                    self.lbl_luz_pct
+                ]),
+                self.slider_luz,
+                ft.Row(alignment=ft.MainAxisAlignment.SPACE_BETWEEN, controls=[
+                    ft.Text("Micrófono (x2):", size=12, color=Theme.AZUL, weight=ft.FontWeight.BOLD),
+                    self.lbl_son_pct
+                ]),
+                self.slider_sonido,
+                ft.Row(spacing=8, controls=[
+                    ft.OutlinedButton("Oscuridad", on_click=lambda e: self.fijar_escenario(0.10, 0.15)),
+                    ft.OutlinedButton("Ambiente Normal", on_click=lambda e: self.fijar_escenario(0.40, 0.30)),
+                    ft.OutlinedButton("Disparar Alerta", on_click=lambda e: self.fijar_escenario(0.85, 0.80)),
+                ])
+            ])
         )
 
-        # --- Emulador de Hardware ---
-        self.txt_lcd_l1 = ft.Text("Luz:30% Son:25%", size=16, font_family="Consolas", color="#22C55E", weight=ft.FontWeight.BOLD)
-        self.txt_lcd_l2 = ft.Text("Z:-3.2 NORMAL   ", size=16, font_family="Consolas", color="#22C55E", weight=ft.FontWeight.BOLD)
+        self.txt_lcd_l1 = ft.Text("Luz:30% Son:25%", size=18, font_family="Consolas", color="#22C55E", weight=ft.FontWeight.BOLD)
+        self.txt_lcd_l2 = ft.Text("Z:-3.2 NORMAL   ", size=18, font_family="Consolas", color="#22C55E", weight=ft.FontWeight.BOLD)
 
-        self.led_verde = ft.Container(width=20, height=20, border_radius=10, bgcolor="#14532D", border=ft.Border.all(2, Theme.VERDE))
-        self.led_rojo = ft.Container(width=20, height=20, border_radius=10, bgcolor="#7F1D1D", border=ft.Border.all(2, Theme.ROJO))
+        self.led_verde = ft.Container(width=22, height=22, border_radius=11, bgcolor="#14532D", border=ft.Border.all(2, Theme.VERDE))
+        self.led_rojo = ft.Container(width=22, height=22, border_radius=11, bgcolor="#7F1D1D", border=ft.Border.all(2, Theme.ROJO))
         self.sirena_texto = ft.Text("SILENCIADA", size=12, weight=ft.FontWeight.BOLD, color=Theme.TEXTO_SEC)
 
         panel_hardware = ft.Container(
-            expand=1,
-            bgcolor=Theme.PANEL,
-            padding=16,
-            border_radius=14,
-            content=ft.Column(
-                spacing=10,
-                controls=[
-                    ft.Row(
-                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                        controls=[
-                            ft.Text("PANTALLA LCD 1602 & ACTUADORES", size=12, weight=ft.FontWeight.BOLD, color=Theme.TEXTO_SEC),
-                            ft.Icon(ft.Icons.MEMORY, size=18, color=Theme.AZUL)
-                        ]
-                    ),
-                    ft.Container(
-                        bgcolor="#0A1E14",
-                        padding=ft.Padding(16, 12, 16, 12),
-                        border_radius=8,
-                        border=ft.Border.all(2, "#1B4D33"),
-                        content=ft.Column(spacing=4, controls=[self.txt_lcd_l1, self.txt_lcd_l2])
-                    ),
-                    ft.Row(
-                        alignment=ft.MainAxisAlignment.SPACE_AROUND,
-                        controls=[
-                            ft.Row(spacing=6, controls=[self.led_verde, ft.Text("LED Verde (G18)", size=11, color=Theme.TEXTO_SEC)]),
-                            ft.Row(spacing=6, controls=[self.led_rojo, ft.Text("LED Rojo (G19)", size=11, color=Theme.TEXTO_SEC)]),
-                            ft.Row(spacing=6, controls=[ft.Icon(ft.Icons.NOTIFICATIONS_ACTIVE, size=18, color=Theme.TEXTO_SEC), self.sirena_texto]),
-                        ]
-                    )
-                ]
-            )
+            expand=1, bgcolor=Theme.PANEL, padding=20, border_radius=14,
+            content=ft.Column(spacing=14, controls=[
+                ft.Row(alignment=ft.MainAxisAlignment.SPACE_BETWEEN, controls=[
+                    ft.Text("PANTALLA LCD 1602 & ACTUADORES", size=12, weight=ft.FontWeight.BOLD, color=Theme.TEXTO_SEC),
+                    ft.Icon(ft.Icons.MEMORY, size=18, color=Theme.AZUL)
+                ]),
+                ft.Container(
+                    bgcolor="#0A1E14", padding=ft.Padding(20, 16, 20, 16), border_radius=8,
+                    border=ft.Border.all(2, "#1B4D33"),
+                    content=ft.Column(spacing=6, controls=[self.txt_lcd_l1, self.txt_lcd_l2])
+                ),
+                ft.Row(alignment=ft.MainAxisAlignment.SPACE_AROUND, controls=[
+                    ft.Row(spacing=8, controls=[self.led_verde, ft.Text("LED Verde", size=12, color=Theme.TEXTO_SEC)]),
+                    ft.Row(spacing=8, controls=[self.led_rojo, ft.Text("LED Rojo", size=12, color=Theme.TEXTO_SEC)]),
+                    ft.Row(spacing=8, controls=[ft.Icon(ft.Icons.NOTIFICATIONS_ACTIVE, size=18, color=Theme.TEXTO_SEC), self.sirena_texto]),
+                ])
+            ])
         )
 
         self.controls = [panel_controles, panel_hardware]

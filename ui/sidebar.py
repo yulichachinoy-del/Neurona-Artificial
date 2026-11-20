@@ -1,288 +1,268 @@
 import flet as ft
-import config
+import serial.tools.list_ports
 from ui.theme import Theme
 
 
 class Sidebar(ft.Container):
-    def __init__(self, neurona, on_parametros_cambiados, on_recalibrar, has_serial: bool):
-        super().__init__(
-            width=280,
-            bgcolor=Theme.PANEL,
-            padding=16,
-            border_radius=16,
-        )
-        self.neurona = neurona
-        self.on_parametros_cambiados = on_parametros_cambiados
-        self.seccion_activa = None
+    def __init__(
+        self,
+        on_navegar,
+        on_conectar_serial,
+        on_refrescar_puertos,
+        on_recalibrar_circuito=None,
+    ):
+        self.on_navegar = on_navegar
+        self.on_conectar_serial = on_conectar_serial
+        self.on_refrescar_puertos = on_refrescar_puertos
+        self.on_recalibrar_circuito = on_recalibrar_circuito
+        self.vista_activa = "inicio"
 
-        # --- Controles dinámicos para Pesos y Sesgo ---
-        self.lbl_wluz = ft.Text(f"{self._get_param('peso_luz', config.PESO_LUZ):.1f}", size=12, weight=ft.FontWeight.BOLD, color=Theme.AMARILLO)
-        self.slider_wluz = ft.Slider(
-            min=0.0, max=10.0, divisions=100,
-            value=self._get_param("peso_luz", config.PESO_LUZ),
-            active_color=Theme.AMARILLO,
-            on_change=self._actualizar_pesos
-        )
+        # --- Botones de Navegación ---
+        self.btn_inicio = self._crear_item_nav("inicio", ft.Icons.HOME_ROUNDED, "Inicio", activo=True)
+        self.btn_monitoreo = self._crear_item_nav("monitoreo", ft.Icons.DASHBOARD_ROUNDED, "Monitoreo en Vivo")
+        self.btn_simulador = self._crear_item_nav("simulador", ft.Icons.DEVELOPER_BOARD_ROUNDED, "Simulador y LCD")
+        self.btn_historial = self._crear_item_nav("historial", ft.Icons.HISTORY_ROUNDED, "Historial de Alertas")
 
-        self.lbl_wson = ft.Text(f"{self._get_param('peso_sonido', config.PESO_SONIDO):.1f}", size=12, weight=ft.FontWeight.BOLD, color=Theme.AZUL)
-        self.slider_wson = ft.Slider(
-            min=0.0, max=10.0, divisions=100,
-            value=self._get_param("peso_sonido", config.PESO_SONIDO),
-            active_color=Theme.AZUL,
-            on_change=self._actualizar_pesos
-        )
-
-        self.lbl_sesgo = ft.Text(f"{self._get_param('sesgo', config.SESGO):.1f}", size=12, weight=ft.FontWeight.BOLD, color=Theme.MORADO)
-        self.slider_sesgo = ft.Slider(
-            min=-10.0, max=0.0, divisions=100,
-            value=self._get_param("sesgo", config.SESGO),
-            active_color=Theme.MORADO,
-            on_change=self._actualizar_pesos
-        )
-
-        # --- Controles dinámicos para Histéresis ---
-        self.lbl_mon = ft.Text(f"{config.MUESTRAS_ON}", size=12, weight=ft.FontWeight.BOLD, color=Theme.ROJO)
-        self.slider_mon = ft.Slider(
-            min=1, max=10, divisions=9,
-            value=config.MUESTRAS_ON,
-            active_color=Theme.ROJO,
-            on_change=self._actualizar_histeresis
-        )
-
-        self.lbl_moff = ft.Text(f"{config.MUESTRAS_OFF}", size=12, weight=ft.FontWeight.BOLD, color=Theme.VERDE)
-        self.slider_moff = ft.Slider(
-            min=1, max=10, divisions=9,
-            value=config.MUESTRAS_OFF,
-            active_color=Theme.VERDE,
-            on_change=self._actualizar_histeresis
-        )
-
-        # --- Definición de las secciones desplegables ---
-        self.paneles_detalle = {
-            "pesos": ft.Container(
-                visible=False,
-                bgcolor=Theme.FONDO,
-                padding=12,
-                border_radius=12,
-                content=ft.Column(
-                    spacing=4,
-                    controls=[
-                        ft.Row([ft.Text("Peso Luz (W_luz)", size=11, color=Theme.TEXTO_SEC), self.lbl_wluz], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
-                        self.slider_wluz,
-                        ft.Row([ft.Text("Peso Sonido (W_son)", size=11, color=Theme.TEXTO_SEC), self.lbl_wson], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
-                        self.slider_wson,
-                        ft.Row([ft.Text("Sesgo (b)", size=11, color=Theme.TEXTO_SEC), self.lbl_sesgo], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
-                        self.slider_sesgo,
-                        ft.TextButton("Restaurar originales", icon=ft.Icons.RESTORE, on_click=self._restaurar_pesos)
-                    ]
-                )
-            ),
-            "histeresis": ft.Container(
-                visible=False,
-                bgcolor=Theme.FONDO,
-                padding=12,
-                border_radius=12,
-                content=ft.Column(
-                    spacing=4,
-                    controls=[
-                        ft.Row([ft.Text("Muestras ON (Alerta)", size=11, color=Theme.TEXTO_SEC), self.lbl_mon], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
-                        self.slider_mon,
-                        ft.Row([ft.Text("Muestras OFF (Normal)", size=11, color=Theme.TEXTO_SEC), self.lbl_moff], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
-                        self.slider_moff,
-                    ]
-                )
-            ),
-            "modelo": ft.Container(
-                visible=False,
-                bgcolor=Theme.FONDO,
-                padding=12,
-                border_radius=12,
-                content=ft.Column(
-                    spacing=6,
-                    controls=[
-                        ft.Text("z = x1·Wluz + x2·Wson + b", size=12, weight=ft.FontWeight.BOLD, color=Theme.AZUL),
-                        ft.Text("• x1, x2: Entradas normalizadas [0, 1]", size=11, color=Theme.TEXTO_SEC),
-                        ft.Text("• Umbral: Alerta activa si z ≥ 0", size=11, color=Theme.TEXTO_SEC),
-                    ]
-                )
-            ),
-            "hardware": ft.Container(
-                visible=False,
-                bgcolor=Theme.FONDO,
-                padding=12,
-                border_radius=12,
-                content=ft.Column(
-                    spacing=6,
-                    controls=[
-                        self._fila_pin("LDR (Luz)", f"GPIO {config.PIN_LDR}"),
-                        self._fila_pin("Micrófono", f"GPIO {config.PIN_MICROFONO}"),
-                        self._fila_pin("Pulsador", f"GPIO {config.PIN_BOTON}"),
-                        self._fila_pin("LED Verde / Rojo", f"G{config.PIN_LED_VERDE} / G{config.PIN_LED_ROJO}"),
-                        self._fila_pin("Buzzers", f"G{config.PIN_BUZZER_AGUDO} / G{config.PIN_BUZZER_GRAVE}"),
-                        self._fila_pin("LCD I2C", f"G{config.PIN_SDA} / G{config.PIN_SCL}"),
-                    ]
-                )
-            ),
+        self.botones_nav = {
+            "inicio": self.btn_inicio,
+            "monitoreo": self.btn_monitoreo,
+            "simulador": self.btn_simulador,
+            "historial": self.btn_historial,
         }
 
-        # --- Ítems estilo lista limpia ---
-        self.items_menu = {
-            "pesos": self._crear_item_menu("pesos", "Ajustar Pesos y Sesgo", ft.Icons.TUNE, fijado=True),
-            "histeresis": self._crear_item_menu("histeresis", "Filtro de Histéresis", ft.Icons.SPEED, fijado=True),
-            "modelo": self._crear_item_menu("modelo", "Fórmula Matemática", ft.Icons.FUNCTIONS, fijado=False),
-            "hardware": self._crear_item_menu("hardware", "Pines y Hardware ESP32", ft.Icons.MEMORY, fijado=False),
-        }
-
-        self.content = ft.Column(
-            scroll=ft.ScrollMode.AUTO,
-            spacing=6,
-            controls=[
-                ft.Container(
-                    padding=ft.Padding(8, 4, 8, 8),
-                    content=ft.Row(
-                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                        controls=[
-                            ft.Row(
-                                spacing=8,
-                                controls=[
-                                    ft.Icon(ft.Icons.PSYCHOLOGY, color=Theme.AZUL, size=22),
-                                    ft.Text("Configuración", size=14, weight=ft.FontWeight.BOLD, color=Theme.TEXTO),
-                                ]
-                            ),
-                            ft.Icon(ft.Icons.FILTER_LIST, size=18, color=Theme.TEXTO_SEC)
-                        ]
-                    )
-                ),
-                self.items_menu["pesos"],
-                self.paneles_detalle["pesos"],
-                self.items_menu["histeresis"],
-                self.paneles_detalle["histeresis"],
-                self.items_menu["modelo"],
-                self.paneles_detalle["modelo"],
-                self.items_menu["hardware"],
-                self.paneles_detalle["hardware"],
-                ft.Divider(color=Theme.BORDE, height=16),
-                ft.Container(
-                    border_radius=20,
-                    padding=ft.Padding(14, 10, 14, 10),
-                    ink=True,
-                    on_click=on_recalibrar,
-                    content=ft.Row(
-                        spacing=10,
-                        controls=[
-                            ft.Icon(ft.Icons.REFRESH, size=18, color=Theme.AZUL),
-                            ft.Text("Recalibrar Neurona", size=13, color=Theme.TEXTO)
-                        ]
-                    )
-                ),
-                ft.Container(
-                    border_radius=20,
-                    padding=ft.Padding(14, 8, 14, 8),
-                    content=ft.Row(
-                        spacing=10,
-                        controls=[
-                            ft.Icon(ft.Icons.CIRCLE, size=10, color=Theme.VERDE if has_serial else Theme.AMARILLO),
-                            ft.Text("Serial Listo" if has_serial else "Modo Simulación", size=12, color=Theme.TEXTO_SEC)
-                        ]
-                    )
-                )
-            ]
+        # --- Controles de Conexión Serial (USB) ---
+        self.dropdown_puertos = ft.Dropdown(
+            hint_text="Puerto COM",
+            text_size=13,
+            height=44,
+            expand=True,
+            border=ft.OutlineInputBorder(
+                border_radius=8,
+                side=ft.BorderSide(color=Theme.BORDE),
+            ),
+            content_padding=ft.Padding.symmetric(horizontal=12, vertical=8),
+            options=[],
         )
 
-    def _crear_item_menu(self, clave: str, titulo: str, icono, fijado: bool = False):
-        return ft.Container(
-            border_radius=22,
-            padding=ft.Padding(14, 10, 14, 10),
-            bgcolor="transparent",
-            ink=True,
-            on_click=lambda e: self._toggle_seccion(clave),
+        self.btn_refrescar = ft.IconButton(
+            icon=ft.Icons.REFRESH_ROUNDED,
+            icon_color=Theme.TEXTO_SEC,
+            icon_size=20,
+            tooltip="Actualizar puertos COM",
+            on_click=self._handle_refrescar_click,
+        )
+
+        self.texto_btn_conectar = ft.Text(
+            "Conectar",
+            size=14,
+            weight=ft.FontWeight.W_600,
+            color="#0F172A",
+        )
+
+        self.btn_conectar = ft.Button(
+            content=self.texto_btn_conectar,
+            height=42,
+            width=float("inf"),
+            bgcolor=Theme.AZUL,
+            style=ft.ButtonStyle(
+                shape=ft.RoundedRectangleBorder(radius=21),
+            ),
+            on_click=self._handle_conectar_click,
+        )
+
+        self.btn_recalibrar = ft.OutlinedButton(
             content=ft.Row(
+                alignment=ft.MainAxisAlignment.CENTER,
+                spacing=6,
+                controls=[
+                    ft.Icon(ft.Icons.TUNE_ROUNDED, size=16, color=Theme.TEXTO),
+                    ft.Text("Recalibrar Circuito", size=12, color=Theme.TEXTO),
+                ],
+            ),
+            height=38,
+            width=float("inf"),
+            on_click=self.on_recalibrar_circuito,
+        )
+
+        self.indicador_punto = ft.Container(
+            width=10,
+            height=10,
+            border_radius=5,
+            bgcolor=Theme.TEXTO_SEC,
+        )
+
+        self.texto_estado = ft.Text(
+            "Desconectado",
+            size=12,
+            color=Theme.TEXTO_SEC,
+            expand=True,
+        )
+
+        # Detectar puertos inmediatamente al construir la barra lateral
+        self.actualizar_puertos()
+
+        super().__init__(
+            width=260,
+            bgcolor=Theme.PANEL,
+            border=ft.Border.all(1, Theme.BORDE),
+            border_radius=16,
+            padding=20,
+            content=ft.Column(
+                expand=True,
                 alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                 controls=[
-                    ft.Row(
-                        spacing=10,
-                        expand=True,
+                    # Parte superior: Logo y Navegación
+                    ft.Column(
+                        spacing=8,
                         controls=[
-                            ft.Icon(icono, size=17, color=Theme.TEXTO_SEC),
-                            ft.Text(
-                                titulo,
-                                size=13,
-                                color=Theme.TEXTO,
-                                max_lines=1,
-                                overflow=ft.TextOverflow.ELLIPSIS,
-                                expand=True
+                            ft.Row(
+                                spacing=10,
+                                controls=[
+                                    ft.Icon(ft.Icons.PSYCHOLOGY_ROUNDED, color=Theme.AZUL, size=28),
+                                    ft.Text(
+                                        "Neurona ESP32",
+                                        size=18,
+                                        weight=ft.FontWeight.BOLD,
+                                        color=Theme.TEXTO,
+                                    ),
+                                ],
                             ),
-                        ]
+                            ft.Container(height=16),
+                            self.btn_inicio,
+                            self.btn_monitoreo,
+                            self.btn_simulador,
+                            self.btn_historial,
+                        ],
                     ),
-                    ft.Icon(ft.Icons.PUSH_PIN_OUTLINED, size=15, color=Theme.TEXTO_SEC) if fijado else ft.Container()
-                ]
-            )
+                    # Parte inferior: Conexión USB
+                    ft.Column(
+                        spacing=10,
+                        controls=[
+                            ft.Divider(color=Theme.BORDE, height=1),
+                            ft.Text(
+                                "CONEXIÓN CIRCUITO (USB)",
+                                size=11,
+                                weight=ft.FontWeight.BOLD,
+                                color=Theme.TEXTO_SEC,
+                            ),
+                            ft.Row(
+                                spacing=6,
+                                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                                controls=[self.dropdown_puertos, self.btn_refrescar],
+                            ),
+                            self.btn_conectar,
+                            self.btn_recalibrar,
+                            ft.Row(
+                                spacing=8,
+                                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                                controls=[self.indicador_punto, self.texto_estado],
+                            ),
+                        ],
+                    ),
+                ],
+            ),
         )
 
-    def _toggle_seccion(self, clave: str):
-        self.seccion_activa = None if self.seccion_activa == clave else clave
-
-        for k, item in self.items_menu.items():
-            activo = (k == self.seccion_activa)
-            item.bgcolor = Theme.PANEL_SEC if activo else "transparent"
-            fila_izq = item.content.controls[0]
-            fila_izq.controls[0].color = Theme.TEXTO if activo else Theme.TEXTO_SEC
-            fila_izq.controls[1].weight = ft.FontWeight.BOLD if activo else ft.FontWeight.NORMAL
-            self.paneles_detalle[k].visible = activo
-
-        self.update()
-
-    def _get_param(self, attr_neurona: str, fallback):
-        return getattr(self.neurona, attr_neurona, fallback)
-
-    def _actualizar_pesos(self, e):
-        wl = round(self.slider_wluz.value, 1)
-        ws = round(self.slider_wson.value, 1)
-        b = round(self.slider_sesgo.value, 1)
-
-        self.lbl_wluz.value = f"{wl:.1f}"
-        self.lbl_wson.value = f"{ws:.1f}"
-        self.lbl_sesgo.value = f"{b:.1f}"
-
-        config.PESO_LUZ = wl
-        config.PESO_SONIDO = ws
-        config.SESGO = b
-        if hasattr(self.neurona, "peso_luz"):
-            self.neurona.peso_luz = wl
-        if hasattr(self.neurona, "peso_sonido"):
-            self.neurona.peso_sonido = ws
-        if hasattr(self.neurona, "sesgo"):
-            self.neurona.sesgo = b
-
-        self.on_parametros_cambiados()
-
-    def _restaurar_pesos(self, e):
-        self.slider_wluz.value = 5.0
-        self.slider_wson.value = 5.0
-        self.slider_sesgo.value = -6.0
-        self._actualizar_pesos(e)
-        self.update()
-
-    def _actualizar_histeresis(self, e):
-        mon = int(self.slider_mon.value)
-        moff = int(self.slider_moff.value)
-        self.lbl_mon.value = str(mon)
-        self.lbl_moff.value = str(moff)
-
-        config.MUESTRAS_ON = mon
-        config.MUESTRAS_OFF = moff
-        if hasattr(self.neurona, "muestras_on"):
-            self.neurona.muestras_on = mon
-        if hasattr(self.neurona, "muestras_off"):
-            self.neurona.muestras_off = moff
-
-        self.on_parametros_cambiados()
-
-    def _fila_pin(self, nombre: str, pin: str):
-        return ft.Row(
-            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-            controls=[
-                ft.Text(nombre, size=11, color=Theme.TEXTO_SEC),
-                ft.Text(pin, size=11, weight=ft.FontWeight.BOLD, color=Theme.TEXTO),
-            ]
+    def _crear_item_nav(self, vista_id: str, icono, texto: str, activo: bool = False):
+        color_texto = Theme.TEXTO if activo else Theme.TEXTO_SEC
+        return ft.Container(
+            content=ft.Row(
+                spacing=12,
+                controls=[
+                    ft.Icon(icono, size=20, color=color_texto),
+                    ft.Text(texto, size=14, weight=ft.FontWeight.W_500, color=color_texto),
+                ],
+            ),
+            padding=ft.Padding.symmetric(horizontal=16, vertical=12),
+            border_radius=24,
+            bgcolor=Theme.PANEL_SEC if activo else ft.Colors.TRANSPARENT,
+            ink=True,
+            on_click=lambda e: self.seleccionar(vista_id),
         )
+
+    def seleccionar(self, vista_id: str):
+        self.vista_activa = vista_id
+        for vid, btn in self.botones_nav.items():
+            activo = vid == vista_id
+            btn.bgcolor = Theme.PANEL_SEC if activo else ft.Colors.TRANSPARENT
+            color_texto = Theme.TEXTO if activo else Theme.TEXTO_SEC
+            btn.content.controls[0].color = color_texto
+            btn.content.controls[1].color = color_texto
+            try:
+                btn.update()
+            except Exception:
+                pass
+        if callable(self.on_navegar):
+            self.on_navegar(vista_id)
+
+    def actualizar_puertos(self, puertos=None):
+        lista_limpia = []
+        if puertos:
+            for p in puertos:
+                # Extraer "COM6" incluso si viene en formato "COM6 - CP210x..."
+                nombre = str(p).split(" - ")[0].split(" ")[0].strip()
+                if nombre:
+                    lista_limpia.append(nombre)
+
+        # Si el serial_manager devolvió vacío, leer directamente los puertos de Windows
+        if not lista_limpia:
+            lista_limpia = [p.device for p in serial.tools.list_ports.comports()]
+
+        self.dropdown_puertos.options = [
+            ft.dropdown.Option(key=p, text=p) for p in lista_limpia
+        ]
+
+        if lista_limpia:
+            if "COM6" in lista_limpia:
+                self.dropdown_puertos.value = "COM6"
+            elif self.dropdown_puertos.value not in lista_limpia:
+                self.dropdown_puertos.value = lista_limpia[0]
+        else:
+            self.dropdown_puertos.value = None
+
+        try:
+            self.dropdown_puertos.update()
+        except Exception:
+            pass
+
+    def _handle_refrescar_click(self, e):
+        self.actualizar_puertos()
+        if callable(self.on_refrescar_puertos):
+            self.on_refrescar_puertos(e)
+
+    def _handle_conectar_click(self, e):
+        puerto = self.dropdown_puertos.value
+        if not puerto:
+            self.texto_estado.value = "Selecciona un puerto"
+            self.texto_estado.color = Theme.ROJO
+            try:
+                self.texto_estado.update()
+            except Exception:
+                pass
+            return
+
+        if callable(self.on_conectar_serial):
+            self.on_conectar_serial(puerto)
+
+    def actualizar_estado_serial(self, conectado: bool, mensaje: str = ""):
+        if conectado:
+            self.texto_btn_conectar.value = "Desconectar"
+            self.texto_btn_conectar.color = "#450A0A"
+            self.btn_conectar.bgcolor = Theme.ROJO
+            self.indicador_punto.bgcolor = Theme.VERDE
+            self.texto_estado.value = mensaje if mensaje else "Conectado"
+            self.texto_estado.color = Theme.VERDE
+        else:
+            self.texto_btn_conectar.value = "Conectar"
+            self.texto_btn_conectar.color = "#0F172A"
+            self.btn_conectar.bgcolor = Theme.AZUL
+            self.indicador_punto.bgcolor = Theme.TEXTO_SEC
+            self.texto_estado.value = mensaje if mensaje else "Desconectado"
+            self.texto_estado.color = Theme.TEXTO_SEC
+
+        try:
+            self.btn_conectar.update()
+            self.indicador_punto.update()
+            self.texto_estado.update()
+        except Exception:
+            pass
