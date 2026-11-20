@@ -12,10 +12,10 @@ import flet as ft
 
 from neuron import Neurona
 from ui.theme import Theme
-from sidebar import Sidebar
-from kpis import KPISection
-from controls_hw import ControlsAndHardwareSection
-from chart import TrendChartSection
+from ui.sidebar import Sidebar
+from ui.kpis import KPISection
+from ui.controls_hw import ControlsAndHardwareSection
+from ui.chart import TrendChartSection
 
 try:
     import serial
@@ -30,10 +30,11 @@ def main(page: ft.Page):
     page.title = "Neurona Artificial — Monitoreo y Simulación ESP32"
     page.bgcolor = Theme.FONDO
     page.theme_mode = ft.ThemeMode.DARK
-    page.window.width = 1920
-    page.window.height = 1080
-    page.window.min_width = 1600
-    page.window.min_height = 900
+    page.window.width = 1366
+    page.window.height = 768
+    page.window.min_width = 1100
+    page.window.min_height = 700
+    page.window.maximized = True
     page.padding = 10
 
     # ---------- ESTADO E INSTANCIA ----------
@@ -89,7 +90,12 @@ def main(page: ft.Page):
         page.update()
 
     # ---------- INSTANCIACIÓN DE MÓDULOS UI ----------
-    barra_lateral = Sidebar(on_recalibrar=on_recalibrar_click, has_serial=HAS_SERIAL)
+    barra_lateral = Sidebar(
+        neurona=neurona,
+        on_parametros_cambiados=lambda: actualizar_evaluacion(estado["x1"], estado["x2"]),
+        on_recalibrar=on_recalibrar_click,
+        has_serial=HAS_SERIAL
+    )
     kpis = KPISection()
     controles_hw = ControlsAndHardwareSection(on_valores_cambiados=on_manual_input, on_toggle_auto=toggle_auto_sim)
     grafica = TrendChartSection(max_puntos=20)
