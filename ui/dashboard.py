@@ -32,6 +32,7 @@ def main(page: ft.Page):
 
     neurona = Neurona()
     estado = {"x1": 0.30, "x2": 0.25, "z": -3.25, "alerta": False, "auto_sim": False}
+    lock_ui = threading.Lock()
 
     # --- Vistas y Módulos ---
     kpis = KPISection()
@@ -42,31 +43,40 @@ def main(page: ft.Page):
     grafica = TrendChartSection(max_puntos=20)
     vista_historial = HistoryView()
 
+    async def _refrescar_pagina_async():
+        try:
+            page.update()
+        except Exception:
+            pass
+
     def actualizar_evaluacion(x1: float, x2: float, z_externo=None, alerta_externa=None, refrescar_ui: bool = True):
-        estado["x1"], estado["x2"] = x1, x2
-        alerta_previa = estado["alerta"]
+        with lock_ui:
+            estado["x1"], estado["x2"] = x1, x2
+            alerta_previa = estado["alerta"]
 
-        # Si el ESP32 envió Z y Alerta reales, usarlos; si no, calcular localmente
-        if z_externo is not None and alerta_externa is not None:
-            z, alerta = z_externo, alerta_externa
-        else:
-            z, alerta = neurona.calcular(x1, x2)
+            if z_externo is not None and alerta_externa is not None:
+                z, alerta = z_externo, alerta_externa
+            else:
+                z, alerta = neurona.calcular(x1, x2)
 
-        estado["z"], estado["alerta"] = z, alerta
+            estado["z"], estado["alerta"] = z, alerta
 
-        if alerta != alerta_previa:
-            vista_historial.registrar_evento(alerta, x1, x2, z)
+            if alerta != alerta_previa:
+                vista_historial.registrar_evento(alerta, x1, x2, z)
 
-        z_norm = max(0.0, min(100.0, (z + 6.0) * 10.0))
-        kpis.actualizar(x1, x2, z, z_norm, alerta, neurona.contador_on, neurona.contador_off)
-        controles_hw.actualizar_hardware(x1, x2, z, alerta)
-        grafica.agregar_punto(x1 * 100.0, x2 * 100.0, z_norm)
+            z_norm = max(0.0, min(100.0, (z + 6.0) * 10.0))
+            kpis.actualizar(x1, x2, z, z_norm, alerta, neurona.contador_on, neurona.contador_off)
+            controles_hw.actualizar_hardware(x1, x2, z, alerta)
+            grafica.agregar_punto(x1 * 100.0, x2 * 100.0, z_norm)
 
         if refrescar_ui:
             try:
-                page.update()
+                page.run_task(_refrescar_pagina_async)
             except Exception:
-                pass
+                try:
+                    page.update()
+                except Exception:
+                    pass
 
     # --- Gestión de Serial con el Circuito ESP32 ---
     def on_datos_serial(x1, x2, z, alerta):
@@ -78,7 +88,7 @@ def main(page: ft.Page):
         badge_fuente.content.controls[1].value = f"Circuito: {mensaje}" if conectado else "Modo Local / Simulación"
         badge_fuente.content.controls[0].color = Theme.VERDE if conectado else Theme.AZUL
         try:
-            page.update()
+            page.run_task(_refrescar_pagina_async)
         except Exception:
             pass
 
@@ -142,7 +152,6 @@ def main(page: ft.Page):
         on_ir_simulador=lambda: barra_lateral.seleccionar("simulador"),
     )
 
-    # Inicia mostrando la descripción de bienvenida
     dashboard = ft.Column(expand=True, spacing=16, scroll=ft.ScrollMode.AUTO, controls=[vista_bienvenida])
 
     def cambiar_vista(vista: str):

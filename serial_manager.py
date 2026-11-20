@@ -35,7 +35,7 @@ class SerialManager:
             self.ser = serial.Serial(
                 port=puerto,
                 baudrate=baudrate,
-                timeout=0.5,
+                timeout=0.2,
                 dsrdtr=False,
                 rtscts=False,
             )
@@ -50,6 +50,7 @@ class SerialManager:
             self.on_status_change(True, f"Conectado ({puerto})")
             return True
         except Exception as e:
+            print(f"[SERIAL ERROR] No se pudo conectar a {puerto}: {e}")
             self.conectado = False
             self.on_status_change(False, f"Error: {e}")
             return False
@@ -71,43 +72,48 @@ class SerialManager:
                 self.ser.write(b"RECALIBRAR\n")
                 self.ser.flush()
                 return True
-            except Exception:
+            except Exception as e:
+                print(f"[SERIAL ERROR] Al enviar recalibración: {e}")
                 return False
         return False
 
     def _leer_loop(self):
         while self._running and self.ser and self.ser.is_open:
             try:
+                # Si se acumulan muchas líneas en el buffer, leer hasta la más reciente
+                if self.ser.in_waiting > 256:
+                    self.ser.reset_input_buffer()
+
                 linea = self.ser.readline().decode("utf-8", errors="ignore").strip()
                 if not linea:
                     continue
+
                 datos = self._parsear_linea(linea)
                 if datos:
                     self.on_data_received(*datos)
-            except Exception:
+            except Exception as e:
+                print(f"[SERIAL LOOP ERROR] {e}")
                 self.desconectar()
                 break
 
     def _parsear_linea(self, linea: str):
-        """
-        Soporta formatos como:
-        - CSV: 0.45,0.30,-2.25,0
-        - Texto: Luz: 0.45 | Sonido: 0.30 | Z: -2.25 | Alerta: False
-        """
-        numeros = re.findall(r"[-+]?\d*\.\d+|\d+", linea)
+        upper = linea.upper()
+        if any(pal in upper for pal in ("RECALIBR", "CALIBR", "INICIANDO", "LISTO", "READY", "BOOT", "ETS ")):
+            return None
+
+        numeros = re.findall(r"[-+]?\d*\.\d+|[-+]?\d+", linea)
         if len(numeros) >= 2:
             x1 = float(numeros[0])
             x2 = float(numeros[1])
-            # Si el ESP32 envía porcentajes (0-100), normalizar a 0.0-1.0
             if x1 > 1.0:
                 x1 /= 100.0
             if x2 > 1.0:
                 x2 /= 100.0
             z = float(numeros[2]) if len(numeros) >= 3 else None
             alerta = None
-            if "ALERTA" in linea.upper() or "TRUE" in linea.upper():
+            if "ALERTA" in upper or "TRUE" in upper or "ON" in upper:
                 alerta = True
-            elif "NORMAL" in linea.upper() or "FALSE" in linea.upper():
+            elif "NORMAL" in upper or "FALSE" in upper or "OFF" in upper:
                 alerta = False
             elif len(numeros) >= 4:
                 alerta = bool(int(float(numeros[3])))
